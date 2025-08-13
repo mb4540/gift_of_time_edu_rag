@@ -1,10 +1,14 @@
 [build]
   publish = "web"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Route /api/* to Functions
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/.netlify/functions/:splat"
   status = 200
 
 # Example scheduled function (enable in a later milestone)
