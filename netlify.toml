@@ -4,7 +4,7 @@
 # Route /api/* to Functions
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  to = "/.netlify/functions/api/:splat"
   status = 200
 
 # Example scheduled function (enable in a later milestone)
