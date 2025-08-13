@@ -1,0 +1,13 @@
+[build]
+  publish = "web"
+
+# Route /api/* to Functions
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# Example scheduled function (enable in a later milestone)
+#[[scheduled.functions]]
+#  name = "nightly-maintenance"
+#  cron = "0 3 * * *" # 03:00 UTC daily

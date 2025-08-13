@@ -1,0 +1,19 @@
+{
+  "name": "gift_of_time_edu_rag",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo build-skip",
+    "lint": "echo (add eslint later)"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "typescript": "^5.9.2"
+  }
+}
