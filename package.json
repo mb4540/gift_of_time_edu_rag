@@ -15,5 +15,8 @@
   "devDependencies": {
     "@types/node": "^24.2.1",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.0.8"
   }
 }
