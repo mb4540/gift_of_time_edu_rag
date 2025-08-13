@@ -1,0 +1,16 @@
+{
+  "name": "gift-of-time-edu-rag",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo build-skip"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@netlify/functions": "^2.0.0"
+  }
+}
