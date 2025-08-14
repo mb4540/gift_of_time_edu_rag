@@ -31,7 +31,7 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
     // Trigger background ingestion function
     // Note: In a real implementation, this would use a queue system
     // For now, we'll make a direct call to the background function
-    const ingestResponse = await fetch(`${process.env.URL || 'http://localhost:8888'}/.netlify/functions/background/ingest`, {
+    const ingestResponse = await fetch(`${process.env.URL || 'http://localhost:8888'}/api/background/ingest`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
