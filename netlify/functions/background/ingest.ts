@@ -240,12 +240,12 @@ export const handler: Handler = async (event, context) => {
       let docResult;
       if (doc_id) {
         docResult = await client.query(
-          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>"doc_id" = $1',
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'doc_id\' = $1',
           [doc_id]
         );
       } else if (blob_key) {
         docResult = await client.query(
-          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>"blob_path" = $1',
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'blob_path\' = $1',
           [blob_key]
         );
       } else if (blob_url) {
@@ -259,7 +259,7 @@ export const handler: Handler = async (event, context) => {
           throw new Error('Unable to derive blob_key from blob_url');
         }
         docResult = await client.query(
-          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>"blob_path" = $1',
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'blob_path\' = $1',
           [derivedKey]
         );
       }
