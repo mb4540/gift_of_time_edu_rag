@@ -36,3 +36,8 @@
   from = "/api/doc-status"
   to = "/.netlify/functions/api/doc-status"
   status = 200
+
+[[redirects]]
+  from = "/api/rag-query"
+  to = "/.netlify/functions/api/rag-query"
+  status = 200

@@ -117,6 +117,34 @@
         <div id="processing-response"></div>
     </section>
 
+    <section>
+        <h2>RAG Query</h2>
+        <div>
+            <label for="query-prompt">Ask a question:</label>
+            <textarea id="query-prompt" placeholder="What is the main topic of the document?" rows="3"></textarea>
+        </div>
+        <div>
+            <label for="query-doc-id">Document ID (optional - leave blank to search all):</label>
+            <input type="text" id="query-doc-id" placeholder="doc_123456789_abc" />
+        </div>
+        <div>
+            <button onclick="submitQuery()">Ask Question</button>
+            <button onclick="clearQuery()">Clear</button>
+        </div>
+        
+        <div id="query-results">
+            <div id="chunks-section" style="display: none;">
+                <h3>📄 Source Chunks</h3>
+                <div id="chunks-display"></div>
+            </div>
+            
+            <div id="answer-section" style="display: none;">
+                <h3>🤖 Answer</h3>
+                <div id="answer-display"></div>
+            </div>
+        </div>
+    </section>
+
     <script>
         async function checkHealth() {
             const responseDiv = document.getElementById('health-response');
@@ -318,6 +346,166 @@
             } catch (error) {
                 responseDiv.textContent = `❌ Error: ${error.message}`;
             }
+        }
+
+        async function submitQuery() {
+            const promptInput = document.getElementById('query-prompt');
+            const docIdInput = document.getElementById('query-doc-id');
+            const chunksSection = document.getElementById('chunks-section');
+            const chunksDisplay = document.getElementById('chunks-display');
+            const answerSection = document.getElementById('answer-section');
+            const answerDisplay = document.getElementById('answer-display');
+            
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                alert('Please enter a question');
+                return;
+            }
+            
+            // Clear previous results
+            chunksSection.style.display = 'none';
+            answerSection.style.display = 'none';
+            chunksDisplay.innerHTML = '';
+            answerDisplay.innerHTML = '';
+            
+            // Show loading
+            answerSection.style.display = 'block';
+            answerDisplay.textContent = '🤔 Thinking...';
+            
+            try {
+                const requestBody = {
+                    prompt: prompt,
+                    doc_id: docIdInput.value.trim() || undefined,
+                    top_k: 5
+                };
+                
+                const response = await fetch('/api/rag-query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                // Check if response is SSE stream
+                const contentType = response.headers.get('content-type');
+                if (contentType?.includes('text/event-stream')) {
+                    await handleStreamingResponse(response);
+                } else {
+                    // Handle JSON response
+                    const data = await response.json();
+                    displayQueryResults(data);
+                }
+                
+            } catch (error) {
+                answerDisplay.textContent = `❌ Error: ${error.message}`;
+                console.error('Query error:', error);
+            }
+        }
+        
+        async function handleStreamingResponse(response) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            const chunksDisplay = document.getElementById('chunks-display');
+            const answerDisplay = document.getElementById('answer-display');
+            const chunksSection = document.getElementById('chunks-section');
+            const answerSection = document.getElementById('answer-section');
+            
+            let buffer = '';
+            answerDisplay.innerHTML = '';
+            
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'chunks') {
+                                    displayChunks(data.chunks);
+                                    chunksSection.style.display = 'block';
+                                } else if (data.type === 'token') {
+                                    answerDisplay.innerHTML += data.content;
+                                } else if (data.type === 'end') {
+                                    console.log('Stream completed');
+                                } else if (data.type === 'error') {
+                                    answerDisplay.innerHTML += `<br><span style="color: red;">Error: ${data.error}</span>`;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+        }
+        
+        function displayQueryResults(data) {
+            const chunksSection = document.getElementById('chunks-section');
+            const answerSection = document.getElementById('answer-section');
+            const answerDisplay = document.getElementById('answer-display');
+            
+            if (data.chunks && data.chunks.length > 0) {
+                displayChunks(data.chunks);
+                chunksSection.style.display = 'block';
+            }
+            
+            answerDisplay.innerHTML = data.answer || 'No answer generated.';
+            answerSection.style.display = 'block';
+        }
+        
+        function displayChunks(chunks) {
+            const chunksDisplay = document.getElementById('chunks-display');
+            chunksDisplay.innerHTML = '';
+            
+            chunks.forEach((chunk, index) => {
+                const chunkDiv = document.createElement('div');
+                chunkDiv.style.cssText = `
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    padding: 10px;
+                    margin: 5px 0;
+                    background-color: #f9f9f9;
+                `;
+                
+                chunkDiv.innerHTML = `
+                    <div style="font-weight: bold; color: #007cba;">
+                        [${index + 1}] ${chunk.document_title || 'Unknown Document'} 
+                        <span style="font-weight: normal; color: #666;">
+                            (Chunk ${chunk.chunk_index}, Similarity: ${(chunk.similarity * 100).toFixed(1)}%)
+                        </span>
+                    </div>
+                    <div style="margin-top: 5px; font-family: monospace; font-size: 0.9em;">
+                        ${chunk.content}
+                    </div>
+                `;
+                
+                chunksDisplay.appendChild(chunkDiv);
+            });
+        }
+        
+        function clearQuery() {
+            document.getElementById('query-prompt').value = '';
+            document.getElementById('query-doc-id').value = '';
+            document.getElementById('chunks-section').style.display = 'none';
+            document.getElementById('answer-section').style.display = 'none';
+            document.getElementById('chunks-display').innerHTML = '';
+            document.getElementById('answer-display').innerHTML = '';
         }
     </script>
 </body>
