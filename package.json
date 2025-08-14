@@ -16,6 +16,10 @@
     "@netlify/functions": "^2.0.0",
     "@netlify/blobs": "^8.0.0",
     "pg": "^8.11.0",
-    "busboy": "^1.6.0"
+    "busboy": "^1.6.0",
+    "mammoth": "^1.6.0",
+    "pdf-parse": "^1.1.1",
+    "epub2": "^3.0.2",
+    "crypto": "^1.0.1"
   }
 }

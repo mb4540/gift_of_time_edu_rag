@@ -26,3 +26,13 @@
   from = "/api/upload"
   to = "/.netlify/functions/api/upload"
   status = 200
+
+[[redirects]]
+  from = "/api/ingest-start"
+  to = "/.netlify/functions/api/ingest-start"
+  status = 200
+
+[[redirects]]
+  from = "/api/doc-status"
+  to = "/.netlify/functions/api/doc-status"
+  status = 200

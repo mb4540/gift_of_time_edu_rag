@@ -55,10 +55,28 @@ export const handler: Handler = async (event, context) => {
       )
     `);
 
+    // Create rag.embeddings table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rag.embeddings (
+        id SERIAL PRIMARY KEY,
+        document_id INTEGER REFERENCES rag.documents(id) ON DELETE CASCADE,
+        chunk_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        embedding VECTOR(1536),
+        token_count INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Create indexes for better performance
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_documents_embedding 
-      ON rag.documents USING ivfflat (embedding vector_cosine_ops)
+      CREATE INDEX IF NOT EXISTS idx_embeddings_document_id 
+      ON rag.embeddings(document_id)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_embeddings_embedding 
+      ON rag.embeddings USING ivfflat (embedding vector_cosine_ops)
     `);
 
     await client.query(`
@@ -82,7 +100,7 @@ export const handler: Handler = async (event, context) => {
       body: JSON.stringify({ 
         migrated: true,
         message: 'Database migration completed successfully',
-        tables: ['core.users', 'rag.documents']
+        tables: ['core.users', 'rag.documents', 'rag.embeddings']
       })
     };
 

@@ -100,6 +100,23 @@
         <div id="upload-response"></div>
     </section>
 
+    <section>
+        <h2>Document Processing</h2>
+        <div>
+            <label for="doc-id-input">Document ID:</label>
+            <input type="text" id="doc-id-input" placeholder="doc_123456789_abc" />
+        </div>
+        <div>
+            <label for="tenant-id-input">Tenant ID:</label>
+            <input type="text" id="tenant-id-input" placeholder="tenant_123" />
+        </div>
+        <div>
+            <button onclick="startIngestion()">Start Ingestion</button>
+            <button onclick="checkDocStatus()">Check Status</button>
+        </div>
+        <div id="processing-response"></div>
+    </section>
+
     <script>
         async function checkHealth() {
             const responseDiv = document.getElementById('health-response');
@@ -230,10 +247,73 @@
                 const data = await response.json();
                 if (response.ok) {
                     responseDiv.textContent = `✅ Upload Success: ${JSON.stringify(data, null, 2)}`;
+                    // Auto-populate processing fields
+                    document.getElementById('doc-id-input').value = data.doc_id;
+                    document.getElementById('tenant-id-input').value = tenantInput.value.trim();
                     // Clear form
                     document.getElementById('upload-form').reset();
                 } else {
                     responseDiv.textContent = `❌ Upload Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function startIngestion() {
+            const docIdInput = document.getElementById('doc-id-input');
+            const tenantIdInput = document.getElementById('tenant-id-input');
+            const responseDiv = document.getElementById('processing-response');
+            
+            if (!docIdInput.value.trim() || !tenantIdInput.value.trim()) {
+                responseDiv.textContent = 'Error: Please enter both Document ID and Tenant ID';
+                return;
+            }
+            
+            responseDiv.textContent = 'Starting ingestion...';
+            
+            try {
+                const response = await fetch('/api/ingest-start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        doc_id: docIdInput.value.trim(),
+                        tenant_id: tenantIdInput.value.trim()
+                    })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    responseDiv.textContent = `✅ Ingestion Started: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    responseDiv.textContent = `❌ Ingestion Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function checkDocStatus() {
+            const docIdInput = document.getElementById('doc-id-input');
+            const responseDiv = document.getElementById('processing-response');
+            
+            if (!docIdInput.value.trim()) {
+                responseDiv.textContent = 'Error: Please enter Document ID';
+                return;
+            }
+            
+            responseDiv.textContent = 'Checking status...';
+            
+            try {
+                const response = await fetch(`/api/doc-status?doc_id=${encodeURIComponent(docIdInput.value.trim())}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    responseDiv.textContent = `📊 Document Status: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    responseDiv.textContent = `❌ Status Check Failed: ${data.error}`;
                 }
             } catch (error) {
                 responseDiv.textContent = `❌ Error: ${error.message}`;
