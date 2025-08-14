@@ -111,9 +111,29 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
     let blobStorageSuccess = false;
     
     try {
-      const store = getStore('uploads');
+      // Configure Netlify Blobs with explicit siteID and token for production
+      // Use built-in Netlify environment variables that are automatically available
+      const siteId = process.env.NETLIFY_SITE_ID || '88476d1e-df1f-4215-93fc-49e736b65d4e';
+      const token = process.env.NETLIFY_TOKEN;
+      
+      let store;
+      if (siteId && token) {
+        // Use explicit configuration for production
+        console.log('Using explicit Netlify Blobs configuration with siteID:', siteId.substring(0, 8) + '...');
+        store = getStore({
+          name: 'uploads',
+          siteID: siteId,
+          token: token
+        });
+      } else {
+        // Try automatic configuration first (works in some Netlify environments)
+        console.log('Attempting automatic Netlify Blobs configuration...');
+        store = getStore('uploads');
+      }
+      
       await store.set(blobPath, uploadData.file.buffer as unknown as ArrayBuffer);
       blobStorageSuccess = true;
+      console.log('Successfully stored file in Netlify Blobs:', blobPath);
     } catch (blobError) {
       console.error('Netlify Blobs error:', blobError);
       
