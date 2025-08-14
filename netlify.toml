@@ -41,3 +41,6 @@
   from = "/api/rag-query"
   to = "/.netlify/functions/api/rag-query"
   status = 200
+
+[functions]
+  "scheduled/nightly-maintenance" = { schedule = "0 2 * * *" }
