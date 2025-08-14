@@ -303,6 +303,10 @@ export const handler: Handler = async (event, context) => {
       
       return {
         statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({
           success: true,
           doc_id,
@@ -344,6 +348,10 @@ export const handler: Handler = async (event, context) => {
     
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

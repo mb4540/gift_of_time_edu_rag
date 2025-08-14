@@ -25,7 +25,10 @@ exports.handler = async (event, context) => {
     }
 
     // Trigger background ingestion function
-    const ingestResponse = await fetch(`${process.env.URL || 'http://localhost:8888'}/api/background/ingest`, {
+    // Build absolute URL using Netlify env vars; avoid localhost fallback in production
+    const baseUrl = process.env.DEPLOY_URL || process.env.URL || 'http://localhost:8888';
+    const targetUrl = `${baseUrl}/api/background/ingest`;
+    const ingestResponse = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -33,7 +36,15 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({ doc_id, tenant_id })
     });
 
-    const ingestResult = await ingestResponse.json();
+    // Safely parse response
+    const contentType = ingestResponse.headers.get('content-type') || '';
+    let ingestResult;
+    if (contentType.includes('application/json')) {
+      ingestResult = await ingestResponse.json();
+    } else {
+      const text = await ingestResponse.text();
+      throw new Error(`Unexpected response from background ingest (status ${ingestResponse.status}, type ${contentType}): ${text.slice(0, 200)}`);
+    }
 
     if (!ingestResponse.ok) {
       throw new Error(`Ingestion failed: ${ingestResult.error || 'Unknown error'}`);
