@@ -1,4 +1,4 @@
-import { Handler } from '@netlify/functions';
+import { Handler, HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
 import { Client } from 'pg';
 import OpenAI from 'openai';
 
@@ -87,7 +87,7 @@ function packContextWithCitations(chunks: ChunkResult[]): string {
   return context;
 }
 
-export const handler: Handler = async (event, context) => {
+export const handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -107,7 +107,7 @@ export const handler: Handler = async (event, context) => {
     
     if (!prompt?.trim()) {
       return {
-        statusCode: 400,
+        statusCode: 200,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'

@@ -1,7 +1,7 @@
-import { Handler } from '@netlify/functions';
+import { HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
 import { Client } from 'pg';
 
-export const handler: Handler = async (event, context) => {
+export const handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
   if (event.httpMethod !== 'GET') {
     return {
       statusCode: 405,

@@ -1,4 +1,4 @@
-import { Handler } from '@netlify/functions';
+import { Handler, HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
 import { getStore } from '@netlify/blobs';
 import { Client } from 'pg';
 import busboy from 'busboy';
@@ -15,7 +15,7 @@ interface UploadData {
   tenant_id?: string;
 }
 
-export const handler: Handler = async (event, context) => {
+export const handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -114,7 +114,7 @@ export const handler: Handler = async (event, context) => {
     // Save file to Blobs
     const store = getStore('uploads');
     const blobPath = `${uploadData.tenant_id}/${doc_id}/original.${ext}`;
-    await store.set(blobPath, uploadData.file.buffer);
+    await store.set(blobPath, uploadData.file.buffer as unknown as ArrayBuffer);
 
     // Insert into database
     const client = new Client({

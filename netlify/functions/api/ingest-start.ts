@@ -1,6 +1,6 @@
-import { Handler } from '@netlify/functions';
+import { HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
 
-export const handler: Handler = async (event, context) => {
+export const handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
