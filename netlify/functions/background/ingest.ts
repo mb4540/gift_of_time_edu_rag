@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import mammoth from 'mammoth';
 import pdf from 'pdf-parse';
 import { createHash } from 'crypto';
+import OpenAI from 'openai';
 
 interface IngestInput {
   doc_id: string;
@@ -54,20 +55,133 @@ function chunkText(text: string, maxTokens: number = 700, overlapTokens: number 
   return chunks;
 }
 
-// Generate fake embedding from SHA256 hash
-function generateFakeEmbedding(text: string): number[] {
-  const hash = createHash('sha256').update(text).digest('hex');
-  const embedding: number[] = [];
-  
-  // Convert hex to 1536 dimensional vector
-  for (let i = 0; i < 1536; i++) {
-    const hexIndex = (i * 2) % hash.length;
-    const hexPair = hash.substr(hexIndex, 2);
-    const value = parseInt(hexPair, 16) / 255; // Normalize to 0-1
-    embedding.push((value - 0.5) * 2); // Center around 0, range -1 to 1
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Sleep utility for retry backoff
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Generate content hash for caching
+function generateContentHash(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+// Get embeddings with retry and backoff
+async function getEmbeddingWithRetry(text: string, maxRetries: number = 3): Promise<number[]> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
+        encoding_format: 'float'
+      });
+      
+      return response.data[0].embedding;
+    } catch (error) {
+      console.error(`Embedding attempt ${attempt} failed:`, error);
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s
+      const backoffMs = Math.pow(2, attempt - 1) * 1000;
+      await sleep(backoffMs);
+    }
   }
   
-  return embedding;
+  throw new Error('Max retries exceeded');
+}
+
+// Batch process embeddings with caching
+async function processEmbeddingsBatch(
+  chunks: string[], 
+  client: Client, 
+  dbDocId: number
+): Promise<void> {
+  const batchSize = 10; // Process 10 chunks at a time
+  
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    const batch = chunks.slice(i, i + batchSize);
+    console.log(`Processing embedding batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)}`);
+    
+    // Process batch in parallel with individual retry logic
+    const embeddingPromises = batch.map(async (chunk, batchIndex) => {
+      const chunkIndex = i + batchIndex;
+      const contentHash = generateContentHash(chunk);
+      
+      try {
+        // Check if embedding already exists (hash-based cache)
+        const existingResult = await client.query(
+          'SELECT embedding FROM rag.embeddings WHERE content_hash = $1',
+          [contentHash]
+        );
+        
+        let embedding: number[];
+        
+        if (existingResult.rows.length > 0) {
+          console.log(`Using cached embedding for chunk ${chunkIndex}`);
+          embedding = existingResult.rows[0].embedding;
+        } else {
+          console.log(`Generating new embedding for chunk ${chunkIndex}`);
+          embedding = await getEmbeddingWithRetry(chunk);
+        }
+        
+        const tokenCount = estimateTokens(chunk);
+        
+        // Store embedding in database
+        await client.query(`
+          INSERT INTO rag.embeddings (
+            document_id, 
+            chunk_index, 
+            content, 
+            content_hash,
+            embedding, 
+            token_count,
+            created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+          ON CONFLICT (content_hash) DO UPDATE SET
+            document_id = EXCLUDED.document_id,
+            chunk_index = EXCLUDED.chunk_index,
+            updated_at = CURRENT_TIMESTAMP
+        `, [
+          dbDocId,
+          chunkIndex,
+          chunk,
+          contentHash,
+          `[${embedding.join(',')}]`, // Store as array string
+          tokenCount
+        ]);
+        
+        return { chunkIndex, success: true };
+      } catch (error) {
+        console.error(`Failed to process chunk ${chunkIndex}:`, error);
+        return { chunkIndex, success: false, error };
+      }
+    });
+    
+    // Wait for batch to complete
+    const results = await Promise.allSettled(embeddingPromises);
+    
+    // Check for failures
+    const failures = results
+      .map((result, idx) => ({ result, idx: i + idx }))
+      .filter(({ result }) => result.status === 'rejected' || 
+        (result.status === 'fulfilled' && !result.value.success));
+    
+    if (failures.length > 0) {
+      console.error(`Batch had ${failures.length} failures:`, failures);
+    }
+    
+    // Small delay between batches to avoid rate limiting
+    if (i + batchSize < chunks.length) {
+      await sleep(1000); // 1 second between batches
+    }
+  }
 }
 
 // Extract text based on file type
@@ -166,30 +280,8 @@ export const handler: Handler = async (event, context) => {
       
       console.log(`Generated ${chunks.length} chunks for document ${doc_id}`);
       
-      // Process each chunk
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const tokenCount = estimateTokens(chunk);
-        const embedding = generateFakeEmbedding(chunk);
-        
-        // Store embedding in database
-        await client.query(`
-          INSERT INTO rag.embeddings (
-            document_id, 
-            chunk_index, 
-            content, 
-            embedding, 
-            token_count,
-            created_at
-          ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-        `, [
-          dbDocId,
-          i,
-          chunk,
-          `[${embedding.join(',')}]`, // Store as array string
-          tokenCount
-        ]);
-      }
+      // Process embeddings in batches with caching and retry logic
+      await processEmbeddingsBatch(chunks, client, dbDocId);
       
       // Update document status to READY
       await client.query(

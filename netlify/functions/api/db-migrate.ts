@@ -27,6 +27,9 @@ export const handler: Handler = async (event, context) => {
     await client.query('CREATE SCHEMA IF NOT EXISTS core');
     await client.query('CREATE SCHEMA IF NOT EXISTS rag');
 
+    // Enable vector extension
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+
     // Create core.users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS core.users (
@@ -62,6 +65,7 @@ export const handler: Handler = async (event, context) => {
         document_id INTEGER REFERENCES rag.documents(id) ON DELETE CASCADE,
         chunk_index INTEGER NOT NULL,
         content TEXT NOT NULL,
+        content_hash VARCHAR(64) UNIQUE,
         embedding VECTOR(1536),
         token_count INTEGER,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -77,6 +81,12 @@ export const handler: Handler = async (event, context) => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_embeddings_embedding 
       ON rag.embeddings USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_embeddings_content_hash 
+      ON rag.embeddings(content_hash)
     `);
 
     await client.query(`

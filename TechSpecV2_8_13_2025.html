@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title></title>
+	<meta name="generator" content="LibreOffice 24.8.7.2 (Linux)"/>
+	<meta name="created" content="2025-08-13T16:56:37.039443830"/>
+	<meta name="changed" content="2025-08-13T17:28:29.005316291"/>
+	<style type="text/css">
+		@page { size: 8.5in 11in; margin: 0.79in }
+		p { line-height: 115%; margin-bottom: 0.1in; background: transparent }
+		h1 { margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h1.western { font-family: "Liberation Sans", sans-serif; font-size: 18pt; font-weight: bold }
+		h1.cjk { font-family: "Noto Sans CJK SC"; font-size: 18pt; font-weight: bold }
+		h1.ctl { font-family: "Noto Sans Devanagari"; font-size: 18pt; font-weight: bold }
+		h2 { margin-top: 0.14in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h2.western { font-family: "Liberation Serif", serif; font-size: 18pt; font-weight: bold }
+		h2.cjk { font-family: "Noto Serif CJK SC"; font-size: 18pt; font-weight: bold }
+		h2.ctl { font-family: "Noto Sans Devanagari"; font-size: 18pt; font-weight: bold }
+		h3 { margin-top: 0.1in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h3.western { font-family: "Liberation Serif", serif; font-size: 14pt; font-weight: bold }
+		h3.cjk { font-family: "Noto Serif CJK SC"; font-size: 14pt; font-weight: bold }
+		h3.ctl { font-family: "Noto Sans Devanagari"; font-size: 14pt; font-weight: bold }
+		blockquote { margin-left: 0.39in; margin-right: 0.39in; background: transparent }
+		h4 { margin-top: 0.08in; margin-bottom: 0.08in; background: transparent; page-break-after: avoid }
+		h4.western { font-family: "Liberation Sans", sans-serif; font-size: 13pt; font-style: italic; font-weight: bold }
+		h4.cjk { font-family: "Noto Sans CJK SC"; font-size: 13pt; font-style: italic; font-weight: bold }
+		h4.ctl { font-family: "Noto Sans Devanagari"; font-size: 13pt; font-style: italic; font-weight: bold }
+		strong { font-weight: bold }
+		code.western { font-family: "Liberation Mono", monospace }
+		code.cjk { font-family: "Noto Sans Mono CJK SC", monospace }
+		code.ctl { font-family: "Liberation Mono", monospace }
+	</style>
+</head>
+<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><h1 class="western">
+Gift of Time Assistant — Full Specification (Netlify-Only Stack)</h1>
+<h2 class="western">1. Overall Goals and Pedagogical Alignment</h2>
+<ul>
+	<li><p><strong>Purpose:</strong> Reduce manual workload for teachers
+	by automating lesson planning, assessment generation, and first-pass
+	grading, while ensuring all materials align with Texas Essential
+	Knowledge and Skills (TEKS).<br/>
+Teachers remain in control—AI
+	suggestions are reviewed, edited, and published by the teacher.</p></li>
+	<li><p><strong>Retrieval-Augmented Learning:</strong> Combines a
+	large language model (LLM) with a vector store of teacher-uploaded
+	texts, grounding AI outputs in actual book content to reduce
+	hallucinations and ensure fidelity.</p></li>
+	<li><p><strong>Grade-Level Standards:</strong> All generated lessons
+	and assessments reference specific TEKS strands; a TEKS library
+	contains a table of Grade 6 codes, strands, and descriptions.</p></li>
+</ul>
+<hr/>
+
+<h2 class="western">2. Architecture Overview (Netlify-Only)</h2>
+<h3 class="western">2.1 Data Layer — Netlify DB + Netlify Blobs</h3>
+<ul>
+	<li><p><strong>Netlify DB (serverless Postgres)</strong></p>
+	<ul>
+		<li><p>Stores relational data (users, classes, lessons, TEKS
+		mappings, grades) <strong>and</strong> vector embeddings via the
+		<code class="western">pgvector</code> extension.</p></li>
+		<li><p>Multi-tenancy via per-tenant schema or a <code class="western">tenant_id</code>
+		column; Row-Level Security (RLS) enabled.</p></li>
+		<li><p>Vectors indexed with IVF/HNSW for ANN search or cosine/L2
+		for small datasets.</p></li>
+	</ul>
+	<li><p><strong>Netlify Blobs</strong></p>
+	<ul>
+		<li><p>Stores unstructured data: uploaded books, extracted text
+		chunks, generated audio/images, rubrics, and exports.</p></li>
+		<li><p>Keys include <code class="western">{tenant}/{bookId}/{sha256}.{ext}</code>,
+		plus “latest” aliases for easy retrieval.</p></li>
+	</ul>
+	<li><p><strong>RAG Ingestion Pipeline</strong></p>
+	<ul>
+		<li><p>Upload → text extraction → chunking (500–1,000 tokens,
+		50–150 overlap) → embeddings → vectors to DB, artifacts to
+		Blobs → provenance metadata saved.</p></li>
+	</ul>
+</ul>
+<h3 class="western">2.2 Backend — Netlify Functions</h3>
+<ul>
+	<li><p><strong>Synchronous Functions (≤30 s)</strong><br/>
+For
+	interactive endpoints: lesson retrieval, RAG queries, saving edits,
+	AI feedback.</p></li>
+	<li><p><strong>Background Functions (≤15 min)</strong><br/>
+For
+	long tasks: bulk ingestion, re-embedding, nightly index updates,
+	Canvas/Docs sync.</p></li>
+	<li><p><strong>Scheduled Functions</strong><br/>
+For cron-like jobs:
+	analytics roll-ups, cleanup, report generation.</p></li>
+	<li><p><strong>Authentication</strong><br/>
+Netlify Identity or
+	district SSO → JWT verification → tenant scope enforced in DB
+	queries.</p></li>
+	<li><p><strong>Observability</strong><br/>
+Function logs, DB query
+	logs, request IDs, slow-query tracking.</p></li>
+</ul>
+<h3 class="western">2.3 Frontend — Netlify (React/TypeScript SPA)</h3>
+<ul>
+	<li><p>Deployed to Netlify’s CDN with deploy previews, instant
+	rollbacks, and HTTPS.</p></li>
+	<li><p>Single-page app, all data flows through Functions (no direct
+	DB access).</p></li>
+	<li><p>Teacher-only modules: Book Library, TEKS Reference Library,
+	Lesson Planning, Assessments, AI Grading, Students/Classes,
+	Materials Library, Progress Analytics, Help Center.</p></li>
+	<li><p>Canvas/Google Docs export &amp; import via Functions.</p></li>
+</ul>
+<h3 class="western">2.4 RAG Pipeline (single pipeline for books &amp;
+references)</h3>
+<p><strong>Goal:</strong> One robust—but not
+over-engineered—pipeline that ingests PDFs/EPUBs/DOCX (and simple
+web pages in the future), cleans the text, chunks it, embeds it, and
+persists vectors + provenance for reliable retrieval and citation in
+lesson plans, assessments, and AI grading.</p>
+<h4 class="western">A. Ingestion overview (shared for books &amp;
+references)</h4>
+<ol>
+	<li><p><strong>Upload &amp; register (sync function)</strong></p>
+	<ul>
+		<li><p>Validate file type/size; store the raw file in <strong>Netlify
+		Blobs</strong> under <code class="western">uploads/{tenant}/{docId}/original.ext</code>.</p></li>
+		<li><p>Create a <code class="western">rag.documents</code> row in
+		<strong>Netlify DB</strong> (status=<code class="western">UPLOADED</code>).</p></li>
+	</ul>
+	<li><p><strong>Preprocess (background function, ≤15 min)</strong></p>
+	<ul>
+		<li><p>Detect format (PDF, EPUB, DOCX) and run a <strong>format-specific
+		extractor</strong> to produce clean plain text + basic structure
+		(chapter/section if available).</p></li>
+		<li><p>Write extracted plaintext to Blobs
+		<code class="western">extracted/{tenant}/{docId}/text.txt</code>;
+		update DB (status=<code class="western">EXTRACTED</code>).</p></li>
+	</ul>
+	<li><p><strong>Normalize &amp; clean (same background job)</strong></p>
+	<ul>
+		<li><p><strong>De-dup headers/footers (PDF):</strong> detect
+		repeating top/bottom lines, page numbers (<code class="western">^\s*\d+\s*$</code>),
+		running titles, and remove them.</p></li>
+		<li><p><strong>Hyphen &amp; soft-line joins (PDF):</strong> merge
+		hyphenated line breaks; collapse multi-spaces; normalize Unicode
+		quotes.</p></li>
+		<li><p><strong>DOCX:</strong> remove styles, tables/artifacts to
+		text; keep numbered lists and headings as plain lines.</p></li>
+		<li><p><strong>EPUB:</strong> concatenate XHTML spine order; strip
+		boilerplate tags; preserve <code class="western">h1–h3</code> as
+		section markers.</p></li>
+		<li><p>Optional OCR pass (future) for image-only PDFs.</p></li>
+	</ul>
+	<li><p><strong>Chunking (same background job)</strong></p>
+	<ul>
+		<li><p><strong>Tokenizer-aware chunking</strong>: target 700
+		tokens, <strong>overlap 120</strong> (balanced for recall and
+		cost).</p></li>
+		<li><p>Respect sentence boundaries (fall back to word-wrap if
+		needed).</p></li>
+		<li><p>Emit chunk metadata: <code class="western">{docId, chunkId,
+		start_token, end_token, section, page_range}</code>.</p></li>
+	</ul>
+	<li><p><strong>Embedding (same background job)</strong></p>
+	<ul>
+		<li><p>Batch calls to embedding API with exponential backoff; cache
+		by <strong>content hash</strong> (<code class="western">sha256(chunk_text)</code>)
+		to avoid re-embedding unchanged text.</p></li>
+		<li><p>Store vectors in <code class="western">rag.embeddings</code>
+		(Netlify DB) using <code class="western">pgvector</code> with an
+		ANN index (IVF/HNSW depending on size).</p></li>
+	</ul>
+	<li><p><strong>Finalize</strong></p>
+	<ul>
+		<li><p>Mark document <code class="western">READY</code>; write an
+		index summary (chunk count, vector index type, embedding model, avg
+		tokens/chunk).</p></li>
+	</ul>
+</ol>
+<blockquote><strong>Why background functions?</strong> Large files
+and embedding batches often exceed a 30s window; background functions
+run up to <strong>15 minutes</strong> and suit ingestion/re-indexing
+jobs.</blockquote>
+<h4 class="western">B. Retrieval &amp; generation (sync function with
+streaming)</h4>
+<ol>
+	<li><p><strong>Query prep</strong></p>
+	<ul>
+		<li><p>Build a query vector from the teacher’s prompt + optional
+		constraints (book, TEKS code, section).</p></li>
+	</ul>
+	<li><p><strong>Hybrid search</strong></p>
+	<ul>
+		<li><p>ANN vector search (<code class="western">pgvector</code>) +
+		lightweight text filter (TEKS tags, section range) to reduce false
+		positives.</p></li>
+	</ul>
+	<li><p><strong>Context packing</strong></p>
+	<ul>
+		<li><p>Select top-k chunks; <strong>dedupe by document/section</strong>;
+		enforce token budget; attach <strong>provenance</strong>
+		(page/section).</p></li>
+	</ul>
+	<li><p><strong>LLM call (streamed)</strong></p>
+	<ul>
+		<li><p>Pass: TEKS goal(s), instructions, retrieved context
+		(citations), and rubric/format spec.</p></li>
+		<li><p>Stream output to UI; store full trace (prompt, retrieved
+		chunk IDs, latency) for auditing.</p></li>
+	</ul>
+</ol>
+<h4 class="western">C. Data model (Netlify DB, schemas simplified)</h4>
+<ul>
+	<li><p><code class="western">rag.documents(doc_id, tenant_id, type
+	{book|reference}, title, author, lexile, status, created_at,
+	updated_at)</code></p></li>
+	<li><p><code class="western">rag.chunks(doc_id, chunk_id, section,
+	page_from, page_to, token_start, token_end, sha256, text)</code></p></li>
+	<li><p><code class="western">rag.embeddings(doc_id, chunk_id,
+	embedding vector(1536), dims int, model text)</code></p></li>
+	<li><p><code class="western">rag.retrieval_logs(id, doc_id,
+	request_id, tenant_id, query, topk, latency_ms, chosen_chunk_ids[],
+	created_at)</code></p></li>
+</ul>
+<p><strong>Indexes</strong></p>
+<ul>
+	<li><p><code class="western">ivfflat/hnsw</code> on
+	<code class="western">embeddings.embedding</code></p></li>
+	<li><p>B-tree on <code class="western">(tenant_id, doc_id)</code>
+	and <code class="western">(doc_id, chunk_id)</code></p></li>
+</ul>
+<h4 class="western">D. Robustness without over-complexity</h4>
+<ul>
+	<li><p><strong>Header/footer removal (just enough):</strong> detect
+	per-page repeating lines + page numbers; no expensive layout
+	libraries.</p></li>
+	<li><p><strong>Language &amp; encoding checks:</strong> fallback
+	normalization; flag non-UTF-8 early.</p></li>
+	<li><p><strong>Hash-based idempotence:</strong> skip re-work when
+	the same content is re-uploaded.</p></li>
+	<li><p><strong>Graceful partials:</strong> if some pages fail to
+	parse, ingest the rest; surface a warning and page list to the
+	teacher.</p></li>
+	<li><p><strong>Provenance first:</strong> always persist
+	page/section spans so the UI can show “where” an answer came
+	from.</p></li>
+	<li><p><strong>Backpressure:</strong> throttle embedding batches;
+	queue multiple docs by tenant if needed (simple FIFO).</p></li>
+</ul>
+<h4 class="western">E. One pipeline, many uses</h4>
+<ul>
+	<li><p><strong>Books and references use the same steps</strong>
+	above; the only difference is document <code class="western">type</code>
+	and optional TEKS tags.</p></li>
+	<li><p>Downstream modules (Lesson Planner, Assessments, AI Grading)
+	<strong>all</strong> call the same <strong>/rag/query</strong>
+	function so improvements benefit the whole app.</p></li>
+</ul>
+<h4 class="western">F. Recommended implementation (Netlify-only)</h4>
+<ul>
+	<li><p><strong>Functions</strong></p>
+	<ul>
+		<li><p><code class="western">functions/background/ingest.mts</code>:
+		orchestrates extract → normalize → chunk → embed → index.</p></li>
+		<li><p><code class="western">functions/api/rag-query.mts</code>:
+		runs retrieval + LLM generation with streaming.</p></li>
+		<li><p><code class="western">functions/scheduled/nightly-maintenance.mts</code>:
+		re-index, vacuum, cleanup.</p></li>
+	</ul>
+	<li><p><strong>Libraries (Node/TS)</strong></p>
+	<ul>
+		<li><p><strong>PDF:</strong> <code class="western">pdf-parse</code>
+		(text), simple regex heuristics for header/footer; optional
+		<code class="western">tesseract.js</code> for future OCR.</p></li>
+		<li><p><strong>DOCX:</strong> <code class="western">mammoth</code>
+		→ HTML → text.</p></li>
+		<li><p><strong>EPUB:</strong> <code class="western">epub2</code> or
+		unzip + <code class="western">cheerio</code> to read spine XHTML.</p></li>
+		<li><p><strong>Chunking:</strong> <code class="western">sbd</code>
+		or <code class="western">sentence-splitter</code> + custom token
+		counter (tiktoken-compatible).</p></li>
+		<li><p><strong>DB:</strong> <code class="western">pg</code> (+
+		<code class="western">pgvector</code> bindings), Prisma optional
+		for migrations.</p></li>
+		<li><p><strong>LLM/Embeddings:</strong> provider SDK (OpenAI or
+		compatible) with request batching.</p></li>
+	</ul>
+</ul>
+<h4 class="western">G. Quality controls (lightweight)</h4>
+<ul>
+	<li><p><strong>Unit checks:</strong> verify chunk counts vs pages,
+	zero-length chunks, average token size bounds.</p></li>
+	<li><p><strong>Spot-evals:</strong> store 1–2 sampled chunks per
+	doc and re-run retrieval to ensure they’re discoverable.</p></li>
+	<li><p><strong>Teacher review hooks:</strong> on first ingest,
+	optionally generate a short “document synopsis” and key theme
+	list for quick validation.</p></li>
+</ul>
+<p><br/>
+<br/>
+
+</p>
+<hr/>
+
+<h2 class="western">3. Feature Specification</h2>
+<h3 class="western">3.1 Teacher Dashboard</h3>
+<ul>
+	<li><p>Metrics: books, lessons, active assignments, TEKS mastery.</p></li>
+	<li><p>Weekly schedule and quick-action buttons.</p></li>
+</ul>
+<h3 class="western">3.2 Book &amp; Reference Management</h3>
+<ul>
+	<li><p>Upload PDFs/EPUBs/DOCX.</p></li>
+	<li><p>AI-assessed Lexile, suggested metadata, TEKS tagging.</p></li>
+	<li><p>Generate TEKS-aligned lesson plans or future assessments.</p></li>
+	<li><p>Reference Library for TEKS standards and supporting docs.</p></li>
+</ul>
+<h3 class="western">3.3 Lesson Planning Module</h3>
+<ul>
+	<li><p>Select book, TEKS, objectives, duration.</p></li>
+	<li><p>AI generates activity plan with retrieved book passages.</p></li>
+	<li><p>Differentiated materials: simplified text, organizers, audio
+	notes.</p></li>
+</ul>
+<h3 class="western">3.4 Assessment &amp; Question Generation</h3>
+<ul>
+	<li><p>Build STAAR-aligned assessments.</p></li>
+	<li><p>AI generates comprehension/discussion questions with
+	citations.</p></li>
+</ul>
+<h3 class="western">3.5 AI Grading &amp; Feedback</h3>
+<ul>
+	<li><p>Upload submissions → AI grades against rubrics → teacher
+	review → export to Canvas/Docs.</p></li>
+	<li><p>Evidence-based feedback pointing to source passages.</p></li>
+</ul>
+<h3 class="western">3.6 Student Management</h3>
+<ul>
+	<li><p>Classes &amp; rosters via CSV import/export.</p></li>
+	<li><p>No student logins; all interactions via Canvas/Docs.</p></li>
+</ul>
+<h3 class="western">3.7 Progress Analytics</h3>
+<ul>
+	<li><p>Dashboards for TEKS mastery and re-teaching recommendations.</p></li>
+</ul>
+<h3 class="western">3.8 Materials Library &amp; Canvas Integration</h3>
+<ul>
+	<li><p>Store rubrics, question sets, worksheets.</p></li>
+	<li><p>One-click publishing to Canvas/Docs; import grades.</p></li>
+</ul>
+<h3 class="western">3.9 Help &amp; Onboarding</h3>
+<ul>
+	<li><p>Guides for uploading materials, lesson creation, grading, and
+	student management.</p></li>
+	<li><p>Tips for organizing content and starting small.</p></li>
+</ul>
+<h3 class="western">3.10 Responsible AI &amp; Governance</h3>
+<ul>
+	<li><p>FERPA compliance, privacy-preserving model usage.</p></li>
+	<li><p>Auxiliary verifier LLM checks for hallucinations/bias.</p></li>
+	<li><p>Teacher approval required before publishing any AI output.</p></li>
+</ul>
+<hr/>
+
+<h2 class="western">4. Future Enhancements</h2>
+<ul>
+	<li><p>Background jobs for nightly indexing and analytics.</p></li>
+	<li><p>Full Canvas &amp; Google Docs bi-directional sync.</p></li>
+	<li><p>Adaptive learning engine for personalized recommendations.</p></li>
+	<li><p>Materials marketplace for teacher-shared resources.</p></li>
+	<li><p>UI accessibility refinements (WCAG compliance).</p></li>
+</ul>
+<hr/>
+
+<h2 class="western">5. Implementation &amp; Technology Choices
+(Netlify-Only)</h2>
+<h3 class="western">Backend (Functions)</h3>
+<ul>
+	<li><p>Language: TypeScript (Node).</p></li>
+	<li><p>Structure:</p>
+	<ul>
+		<li><p><code class="western">functions/api/*</code> → short
+		endpoints</p></li>
+		<li><p><code class="western">functions/background/*</code> →
+		ingestion, sync</p></li>
+		<li><p><code class="western">functions/scheduled/*</code> → cron
+		jobs</p></li>
+	</ul>
+	<li><p>Libraries: pg/Prisma, pgvector, OpenAI SDK, pdf-parse, epub
+	parser, zod validation.</p></li>
+	<li><p>Resilience: exponential backoff, idempotent job keys, failed
+	payloads to Blobs.</p></li>
+</ul>
+<h3 class="western">Database (Netlify DB)</h3>
+<ul>
+	<li><p>Schemas:</p>
+	<ul>
+		<li><p><code class="western">core</code> (users, tenants, lessons,
+		assessments, grades, TEKS)</p></li>
+		<li><p><code class="western">rag</code> (documents, chunks,
+		embeddings, retrieval logs, provenance)</p></li>
+	</ul>
+	<li><p>Indexing: B-tree, GIN/IVFFLAT/HNSW for vector search.</p></li>
+	<li><p>RLS for tenant data isolation.</p></li>
+	<li><p>Migrations in CI.</p></li>
+</ul>
+<h3 class="western">Blobs (Objects/KV)</h3>
+<ul>
+	<li><p>Buckets: uploads, extracted, generated, exports.</p></li>
+	<li><p>Metadata sidecars for provenance.</p></li>
+	<li><p>DB holds lightweight pointers for quick lookup.</p></li>
+</ul>
+<h3 class="western">Frontend (React)</h3>
+<ul>
+	<li><p>State: React Query + Zustand/Redux.</p></li>
+	<li><p>Accessibility: WCAG AA compliance.</p></li>
+	<li><p>Performance: code splitting, deferred data, prefetch on
+	hover.</p></li>
+</ul>
+<h3 class="western">LLM &amp; RAG</h3>
+<ul>
+	<li><p>Prompts include TEKS + retrieved passages + instructions.</p></li>
+	<li><p>Verifier checks claims match retrieved spans.</p></li>
+	<li><p>Cost control: cache embeddings, dedupe chunks, batch API
+	calls.</p></li>
+</ul>
+<h3 class="western">Security</h3>
+<ul>
+	<li><p>SSO via Netlify Identity/district IdP; short-lived tokens.</p></li>
+	<li><p>Secrets in env vars only.</p></li>
+	<li><p>FERPA compliance: student data scoped to teacher’s tenant.</p></li>
+</ul>
+<hr/>
+
+<h2 class="western">Conclusion</h2>
+<p>The Gift of Time Assistant delivers a <strong>teacher-only,
+AI-powered workflow</strong> for TEKS-aligned lesson planning,
+assessment creation, AI grading, and class management—without
+student access.<br/>
+Using <strong>Netlify DB</strong>, <strong>Netlify
+Blobs</strong>, and <strong>Netlify Functions</strong>, the stack is
+fully managed within Netlify’s ecosystem, reducing operational
+overhead while remaining scalable, secure, and standards-aligned.</p>
+<hr/>
+
+<p>If you want, I can now produce this as a <strong>polished PDF or
+DOCX</strong> so you have a ready-to-share version for stakeholders.
+Would you like me to do that?</p>
+<p style="line-height: 100%; margin-bottom: 0in"><br/>
+
+</p>
+</body>
+</html>
