@@ -67,6 +67,39 @@
         <div id="migration-response"></div>
     </section>
 
+    <section>
+        <h2>File Upload</h2>
+        <form id="upload-form" enctype="multipart/form-data">
+            <div>
+                <label for="file-input">File:</label>
+                <input type="file" id="file-input" name="file" required />
+            </div>
+            <div>
+                <label for="title-input">Title:</label>
+                <input type="text" id="title-input" name="title" placeholder="Document title" required />
+            </div>
+            <div>
+                <label for="type-input">Type:</label>
+                <select id="type-input" name="type" required>
+                    <option value="">Select type...</option>
+                    <option value="pdf">PDF</option>
+                    <option value="text">Text</option>
+                    <option value="image">Image</option>
+                    <option value="video">Video</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div>
+                <label for="tenant-input">Tenant ID:</label>
+                <input type="text" id="tenant-input" name="tenant_id" placeholder="tenant_123" required />
+            </div>
+            <div>
+                <button type="button" onclick="uploadFile()">Upload File</button>
+            </div>
+        </form>
+        <div id="upload-response"></div>
+    </section>
+
     <script>
         async function checkHealth() {
             const responseDiv = document.getElementById('health-response');
@@ -156,6 +189,51 @@
                     responseDiv.textContent = `✅ Migration Success: ${JSON.stringify(data, null, 2)}`;
                 } else {
                     responseDiv.textContent = `❌ Migration Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const titleInput = document.getElementById('title-input');
+            const typeInput = document.getElementById('type-input');
+            const tenantInput = document.getElementById('tenant-input');
+            const responseDiv = document.getElementById('upload-response');
+            
+            // Validate inputs
+            if (!fileInput.files || !fileInput.files[0]) {
+                responseDiv.textContent = 'Error: Please select a file';
+                return;
+            }
+            
+            if (!titleInput.value.trim() || !typeInput.value || !tenantInput.value.trim()) {
+                responseDiv.textContent = 'Error: Please fill in all fields';
+                return;
+            }
+            
+            responseDiv.textContent = 'Uploading...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('title', titleInput.value.trim());
+                formData.append('type', typeInput.value);
+                formData.append('tenant_id', tenantInput.value.trim());
+                
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    responseDiv.textContent = `✅ Upload Success: ${JSON.stringify(data, null, 2)}`;
+                    // Clear form
+                    document.getElementById('upload-form').reset();
+                } else {
+                    responseDiv.textContent = `❌ Upload Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
                 }
             } catch (error) {
                 responseDiv.textContent = `❌ Error: ${error.message}`;
