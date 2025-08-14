@@ -5,6 +5,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 describe('extractText', () => {
   beforeEach(() => {
     vi.resetModules();
+    // Mock environment variables to avoid OpenAI client initialization
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    vi.stubEnv('NETLIFY_DATABASE_URL', 'postgresql://test');
   });
 
   it('extracts text from plain text buffers', async () => {
