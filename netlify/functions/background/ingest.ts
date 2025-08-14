@@ -240,12 +240,12 @@ export const handler: Handler = async (event, context) => {
       let docResult;
       if (doc_id) {
         docResult = await client.query(
-          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'doc_id\' = $1',
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>"doc_id" = $1',
           [doc_id]
         );
       } else if (blob_key) {
         docResult = await client.query(
-          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'blob_path\' = $1',
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>"blob_path" = $1',
           [blob_key]
         );
       } else if (blob_url) {
@@ -259,12 +259,12 @@ export const handler: Handler = async (event, context) => {
           throw new Error('Unable to derive blob_key from blob_url');
         }
         docResult = await client.query(
-          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'blob_path\' = $1',
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>"blob_path" = $1',
           [derivedKey]
         );
       }
       
-      if (docResult.rows.length === 0) {
+      if (!docResult || docResult.rows.length === 0) {
         throw new Error(`Document not found: ${doc_id}`);
       }
       
@@ -283,7 +283,10 @@ export const handler: Handler = async (event, context) => {
       const blobPath = metadata.blob_path || blob_key;
       let fileBuffer: ArrayBuffer | null = null;
       if (blobPath) {
-        fileBuffer = await store.get(blobPath);
+        const blobData = await store.get(blobPath);
+        if (blobData) {
+          fileBuffer = blobData as unknown as ArrayBuffer;
+        }
       } else if (blob_url) {
         const resp = await fetch(blob_url);
         if (!resp.ok) throw new Error(`Failed to fetch blob_url: ${resp.status}`);
