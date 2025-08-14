@@ -106,10 +106,30 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
     const filename = uploadData.file.filename;
     const ext = filename.split('.').pop() || 'bin';
     
-    // Save file to Blobs
-    const store = getStore('uploads');
-    const blobPath = `${uploadData.tenant_id}/${doc_id}/original.${ext}`;
-    await store.set(blobPath, uploadData.file.buffer as unknown as ArrayBuffer);
+    // Save file to Blobs with proper error handling
+    let blobPath = `${uploadData.tenant_id}/${doc_id}/original.${ext}`;
+    let blobStorageSuccess = false;
+    
+    try {
+      const store = getStore('uploads');
+      await store.set(blobPath, uploadData.file.buffer as unknown as ArrayBuffer);
+      blobStorageSuccess = true;
+    } catch (blobError) {
+      console.error('Netlify Blobs error:', blobError);
+      
+      // If Netlify Blobs is not configured, provide helpful error message
+      if (blobError instanceof Error && blobError.message.includes('environment has not been configured')) {
+        return createErrorResponse(503, 'File storage service not configured. Please configure Netlify Blobs for this site.', ErrorCodes.EXTERNAL_API_ERROR, {
+          message: 'Netlify Blobs requires site configuration. Please claim the site and run: netlify blobs:create uploads',
+          blobError: blobError.message
+        });
+      }
+      
+      // For other blob storage errors
+      return createErrorResponse(500, 'File storage failed', ErrorCodes.EXTERNAL_API_ERROR, {
+        message: blobError instanceof Error ? blobError.message : 'Unknown blob storage error'
+      });
+    }
 
     // Insert into database
     const client = new Client({
