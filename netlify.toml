@@ -16,3 +16,8 @@
   from = "/api/blob-get"
   to = "/.netlify/functions/api/blob-get"
   status = 200
+
+[[redirects]]
+  from = "/api/db-migrate"
+  to = "/.netlify/functions/api/db-migrate"
+  status = 200

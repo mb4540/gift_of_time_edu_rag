@@ -60,6 +60,13 @@
         <div id="blob-response"></div>
     </section>
 
+    <section>
+        <h2>Database Migration</h2>
+        <p>Initialize the database with core.users and rag.documents tables:</p>
+        <button onclick="runMigration()">Run DB Migration</button>
+        <div id="migration-response"></div>
+    </section>
+
     <script>
         async function checkHealth() {
             const responseDiv = document.getElementById('health-response');
@@ -126,6 +133,29 @@
                     responseDiv.textContent = `✅ Loaded: ${JSON.stringify(data, null, 2)}`;
                 } else {
                     responseDiv.textContent = `❌ Error: ${data.error}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function runMigration() {
+            const responseDiv = document.getElementById('migration-response');
+            responseDiv.textContent = 'Running migration...';
+            
+            try {
+                const response = await fetch('/api/db-migrate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    responseDiv.textContent = `✅ Migration Success: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    responseDiv.textContent = `❌ Migration Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
                 }
             } catch (error) {
                 responseDiv.textContent = `❌ Error: ${error.message}`;
