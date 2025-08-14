@@ -2,13 +2,14 @@ import { Handler } from '@netlify/functions';
 import { getStore } from '@netlify/blobs';
 import { Client } from 'pg';
 import mammoth from 'mammoth';
-import pdf from 'pdf-parse';
 import { createHash } from 'crypto';
 import OpenAI from 'openai';
 
 interface IngestInput {
-  doc_id: string;
-  tenant_id: string;
+  doc_id?: string;
+  tenant_id?: string;
+  blob_key?: string;     // optional alternative to doc_id
+  blob_url?: string;     // optional alternative to doc_id
 }
 
 // Simple word-based tokenizer approximation
@@ -185,11 +186,14 @@ async function processEmbeddingsBatch(
 }
 
 // Extract text based on file type
-async function extractText(buffer: Buffer, filename: string, mimetype: string): Promise<string> {
+export async function extractText(buffer: Buffer, filename: string, mimetype: string): Promise<string> {
   const ext = filename.split('.').pop()?.toLowerCase();
   
   try {
     if (mimetype.includes('pdf') || ext === 'pdf') {
+      // Lazy-load pdf-parse to avoid cold start evaluation issues in serverless bundlers
+      const pdfModule = await import('pdf-parse');
+      const pdf = (pdfModule as any).default ?? pdfModule;
       const data = await pdf(buffer);
       return data.text;
     }
@@ -215,10 +219,10 @@ async function extractText(buffer: Buffer, filename: string, mimetype: string): 
 export const handler: Handler = async (event, context) => {
   try {
     const input: IngestInput = JSON.parse(event.body || '{}');
-    const { doc_id, tenant_id } = input;
+    const { doc_id, tenant_id, blob_key, blob_url } = input;
     
-    if (!doc_id || !tenant_id) {
-      throw new Error('Missing doc_id or tenant_id');
+    if (!doc_id && !blob_key && !blob_url) {
+      throw new Error('Missing identifier: provide doc_id or blob_key or blob_url');
     }
     
     console.log(`Starting ingestion for doc_id: ${doc_id}, tenant_id: ${tenant_id}`);
@@ -233,10 +237,32 @@ export const handler: Handler = async (event, context) => {
     
     try {
       // Get document metadata from database
-      const docResult = await client.query(
-        'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'doc_id\' = $1',
-        [doc_id]
-      );
+      let docResult;
+      if (doc_id) {
+        docResult = await client.query(
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'doc_id\' = $1',
+          [doc_id]
+        );
+      } else if (blob_key) {
+        docResult = await client.query(
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'blob_path\' = $1',
+          [blob_key]
+        );
+      } else if (blob_url) {
+        // Best-effort: derive key from URL path (last path segment(s))
+        let derivedKey = '';
+        try {
+          const u = new URL(blob_url);
+          derivedKey = u.pathname.replace(/^\//, '');
+        } catch {}
+        if (!derivedKey) {
+          throw new Error('Unable to derive blob_key from blob_url');
+        }
+        docResult = await client.query(
+          'SELECT id, title, metadata FROM rag.documents WHERE metadata->>\'blob_path\' = $1',
+          [derivedKey]
+        );
+      }
       
       if (docResult.rows.length === 0) {
         throw new Error(`Document not found: ${doc_id}`);
@@ -254,8 +280,16 @@ export const handler: Handler = async (event, context) => {
       
       // Fetch file from Blobs
       const store = getStore('uploads');
-      const blobPath = metadata.blob_path;
-      const fileBuffer = await store.get(blobPath);
+      const blobPath = metadata.blob_path || blob_key;
+      let fileBuffer: ArrayBuffer | null = null;
+      if (blobPath) {
+        fileBuffer = await store.get(blobPath);
+      } else if (blob_url) {
+        const resp = await fetch(blob_url);
+        if (!resp.ok) throw new Error(`Failed to fetch blob_url: ${resp.status}`);
+        const ab = await resp.arrayBuffer();
+        fileBuffer = ab;
+      }
       
       if (!fileBuffer) {
         throw new Error(`File not found in blob storage: ${blobPath}`);
