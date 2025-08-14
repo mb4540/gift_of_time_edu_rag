@@ -1,14 +1,12 @@
-import { HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
+import { Handler } from '@netlify/functions';
 
-export const handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
+export const handler: Handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+        'Access-Control-Allow-Origin': '*'
       },
       body: JSON.stringify({ error: 'Method not allowed' })
     };
