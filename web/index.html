@@ -35,15 +35,34 @@
 </head>
 <body>
     <h1>Gift of Time EDU RAG</h1>
-    <p>Click the button to test the API health endpoint:</p>
     
-    <button onclick="checkHealth()">Check API Health</button>
-    
-    <div id="response"></div>
+    <section>
+        <h2>API Health Check</h2>
+        <p>Click the button to test the API health endpoint:</p>
+        <button onclick="checkHealth()">Check API Health</button>
+        <div id="health-response"></div>
+    </section>
+
+    <section>
+        <h2>Blob Storage</h2>
+        <div>
+            <label for="key-input">Key:</label>
+            <input type="text" id="key-input" placeholder="Enter key name" />
+        </div>
+        <div>
+            <label for="value-input">Value:</label>
+            <textarea id="value-input" placeholder="Enter value to store" rows="4"></textarea>
+        </div>
+        <div>
+            <button onclick="saveBlob()">Save</button>
+            <button onclick="loadBlob()">Load</button>
+        </div>
+        <div id="blob-response"></div>
+    </section>
 
     <script>
         async function checkHealth() {
-            const responseDiv = document.getElementById('response');
+            const responseDiv = document.getElementById('health-response');
             responseDiv.textContent = 'Loading...';
             
             try {
@@ -52,6 +71,64 @@
                 responseDiv.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
                 responseDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function saveBlob() {
+            const key = document.getElementById('key-input').value.trim();
+            const value = document.getElementById('value-input').value;
+            const responseDiv = document.getElementById('blob-response');
+            
+            if (!key) {
+                responseDiv.textContent = 'Error: Please enter a key';
+                return;
+            }
+            
+            responseDiv.textContent = 'Saving...';
+            
+            try {
+                const response = await fetch('/api/blob-put', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ key, value })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    responseDiv.textContent = `✅ Saved: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    responseDiv.textContent = `❌ Error: ${data.error}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function loadBlob() {
+            const key = document.getElementById('key-input').value.trim();
+            const responseDiv = document.getElementById('blob-response');
+            
+            if (!key) {
+                responseDiv.textContent = 'Error: Please enter a key';
+                return;
+            }
+            
+            responseDiv.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch(`/api/blob-get?key=${encodeURIComponent(key)}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('value-input').value = data.value;
+                    responseDiv.textContent = `✅ Loaded: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    responseDiv.textContent = `❌ Error: ${data.error}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ Error: ${error.message}`;
             }
         }
     </script>

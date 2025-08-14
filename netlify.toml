@@ -6,3 +6,13 @@
   from = "/api/health"
   to = "/.netlify/functions/health"
   status = 200
+
+[[redirects]]
+  from = "/api/blob-put"
+  to = "/.netlify/functions/api/blob-put"
+  status = 200
+
+[[redirects]]
+  from = "/api/blob-get"
+  to = "/.netlify/functions/api/blob-get"
+  status = 200
