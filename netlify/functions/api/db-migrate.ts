@@ -72,6 +72,20 @@ export const handler: Handler = async (event, context) => {
       )
     `);
 
+    // Create rag.retrieval_logs table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rag.retrieval_logs (
+        id SERIAL PRIMARY KEY,
+        request_id VARCHAR(36) UNIQUE NOT NULL,
+        query_text TEXT NOT NULL,
+        chunk_ids INTEGER[] NOT NULL,
+        latency_ms INTEGER NOT NULL,
+        doc_id VARCHAR(255),
+        top_k INTEGER DEFAULT 5,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Create indexes for better performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_embeddings_document_id 
@@ -99,6 +113,16 @@ export const handler: Handler = async (event, context) => {
       ON rag.documents(document_type)
     `);
 
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_retrieval_logs_request_id 
+      ON rag.retrieval_logs(request_id)
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_retrieval_logs_created_at 
+      ON rag.retrieval_logs(created_at)
+    `);
+
     return {
       statusCode: 200,
       headers: {
@@ -110,7 +134,7 @@ export const handler: Handler = async (event, context) => {
       body: JSON.stringify({ 
         migrated: true,
         message: 'Database migration completed successfully',
-        tables: ['core.users', 'rag.documents', 'rag.embeddings']
+        tables: ['core.users', 'rag.documents', 'rag.embeddings', 'rag.retrieval_logs']
       })
     };
 

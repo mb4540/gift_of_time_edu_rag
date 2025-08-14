@@ -1,11 +1,20 @@
 import { Handler, HandlerEvent, HandlerContext, HandlerResponse } from '@netlify/functions';
 import { Client } from 'pg';
 import OpenAI from 'openai';
+import { randomUUID } from 'crypto';
 
 interface QueryInput {
   prompt: string;
   doc_id?: string;
   top_k?: number;
+}
+
+interface QueryResponse {
+  request_id: string;
+  chunks: ChunkResult[];
+  answer: string;
+  streaming: boolean;
+  latency_ms?: number;
 }
 
 interface ChunkResult {
@@ -20,6 +29,27 @@ interface ChunkResult {
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Log retrieval to database
+async function logRetrieval(
+  client: Client,
+  requestId: string,
+  queryText: string,
+  chunkIds: number[],
+  latencyMs: number,
+  docId?: string,
+  topK: number = 5
+): Promise<void> {
+  try {
+    await client.query(`
+      INSERT INTO rag.retrieval_logs (request_id, query_text, chunk_ids, latency_ms, doc_id, top_k)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [requestId, queryText, chunkIds, latencyMs, docId, topK]);
+  } catch (error) {
+    console.error('Failed to log retrieval:', error);
+    // Don't throw - logging failure shouldn't break the query
+  }
+}
 
 // Get embedding for query
 async function getQueryEmbedding(query: string): Promise<number[]> {
@@ -116,7 +146,11 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
       };
     }
 
-    console.log(`RAG query: "${prompt}" ${doc_id ? `for doc ${doc_id}` : 'across all documents'}`);
+    // Generate request ID and start timing
+    const requestId = randomUUID();
+    const startTime = Date.now();
+
+    console.log(`RAG query [${requestId}]: "${prompt}" ${doc_id ? `for doc ${doc_id}` : 'across all documents'}`);
 
     // Connect to database
     const client = new Client({
@@ -136,6 +170,11 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
       const chunks = await vectorSearch(client, queryEmbedding, doc_id, top_k);
       
       if (chunks.length === 0) {
+        const latencyMs = Date.now() - startTime;
+        
+        // Log the query even if no chunks found
+        await logRetrieval(client, requestId, prompt, [], latencyMs, doc_id, top_k);
+        
         return {
           statusCode: 200,
           headers: {
@@ -143,9 +182,11 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
             'Access-Control-Allow-Origin': '*'
           },
           body: JSON.stringify({
+            request_id: requestId,
             chunks: [],
             answer: "No relevant information found in the knowledge base.",
-            streaming: false
+            streaming: false,
+            latency_ms: latencyMs
           })
         };
       }
@@ -154,6 +195,13 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
       const contextWithCitations = packContextWithCitations(chunks);
       
       console.log(`Found ${chunks.length} relevant chunks, generating response...`);
+      
+      // Calculate latency and log retrieval
+      const latencyMs = Date.now() - startTime;
+      const chunkIds = chunks.map(chunk => chunk.id);
+      
+      // Log the retrieval
+      await logRetrieval(client, requestId, prompt, chunkIds, latencyMs, doc_id, top_k);
       
       // Check if client accepts Server-Sent Events
       const acceptsSSE = event.headers.accept?.includes('text/event-stream');
@@ -170,7 +218,7 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
             'Access-Control-Allow-Headers': 'Content-Type, Accept',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
           },
-          body: await streamChatCompletion(contextWithCitations, prompt, chunks)
+          body: await streamChatCompletion(contextWithCitations, prompt, chunks, requestId, latencyMs)
         };
       } else {
         // Return regular JSON response with non-streaming completion
@@ -193,6 +241,7 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
             'Access-Control-Allow-Origin': '*'
           },
           body: JSON.stringify({
+            request_id: requestId,
             chunks: chunks.map(chunk => ({
               id: chunk.id,
               content: chunk.content.substring(0, 200) + '...', // Truncate for display
@@ -201,7 +250,8 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
               document_title: chunk.document_title
             })),
             answer,
-            streaming: false
+            streaming: false,
+            latency_ms: latencyMs
           })
         };
       }
@@ -230,7 +280,9 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
 async function streamChatCompletion(
   context: string, 
   prompt: string, 
-  chunks: ChunkResult[]
+  chunks: ChunkResult[],
+  requestId: string,
+  latencyMs: number
 ): Promise<string> {
   try {
     const stream = await openai.chat.completions.create({
@@ -246,7 +298,14 @@ async function streamChatCompletion(
 
     let sseResponse = '';
     
-    // Send chunks first
+    // Send metadata first
+    sseResponse += `data: ${JSON.stringify({
+      type: 'metadata',
+      request_id: requestId,
+      latency_ms: latencyMs
+    })}\n\n`;
+    
+    // Send chunks
     sseResponse += `data: ${JSON.stringify({
       type: 'chunks',
       chunks: chunks.map(chunk => ({
