@@ -3,7 +3,7 @@ import { Client } from 'pg';
 import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
-import { validateRequestBody, createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from '../shared/utils';
+import { validateRequestBody, createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from './shared/utils';
 
 // Zod schema for input validation
 const QueryInputSchema = z.object({
@@ -30,10 +30,15 @@ interface ChunkResult {
   document_title?: string;
 }
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client (lazy initialization)
+function getOpenAIClient(): OpenAI {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is required');
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 // Log retrieval to database
 async function logRetrieval(
@@ -58,7 +63,8 @@ async function logRetrieval(
 
 // Get embedding for query
 async function getQueryEmbedding(query: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
+  const client = getOpenAIClient();
+  const response = await client.embeddings.create({
     model: 'text-embedding-3-small',
     input: query,
     encoding_format: 'float'
@@ -219,7 +225,8 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
         };
       } else {
         // Return regular JSON response with non-streaming completion
-        const completion = await openai.chat.completions.create({
+        const client = getOpenAIClient();
+        const completion = await client.chat.completions.create({
           model: 'gpt-3.5-turbo',
           messages: [
             { role: 'system', content: contextWithCitations },
@@ -289,7 +296,8 @@ async function streamChatCompletion(
   latencyMs: number
 ): Promise<string> {
   try {
-    const stream = await openai.chat.completions.create({
+    const client = getOpenAIClient();
+    const stream = await client.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: context },

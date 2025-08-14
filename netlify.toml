@@ -1,6 +1,7 @@
 [build]
   command = "npm run build"
   publish = "web"
+  functions = "netlify/functions"
 
 [[redirects]]
   from = "/api/health"
@@ -9,37 +10,37 @@
 
 [[redirects]]
   from = "/api/blob-put"
-  to = "/.netlify/functions/api/blob-put"
+  to = "/.netlify/functions/blob-put"
   status = 200
 
 [[redirects]]
   from = "/api/blob-get"
-  to = "/.netlify/functions/api/blob-get"
+  to = "/.netlify/functions/blob-get"
   status = 200
 
 [[redirects]]
   from = "/api/db-migrate"
-  to = "/.netlify/functions/api/db-migrate"
+  to = "/.netlify/functions/db-migrate"
   status = 200
 
 [[redirects]]
   from = "/api/upload"
-  to = "/.netlify/functions/api/upload"
+  to = "/.netlify/functions/upload"
   status = 200
 
 [[redirects]]
   from = "/api/ingest-start"
-  to = "/.netlify/functions/api/ingest-start"
+  to = "/.netlify/functions/ingest-start"
   status = 200
 
 [[redirects]]
   from = "/api/doc-status"
-  to = "/.netlify/functions/api/doc-status"
+  to = "/.netlify/functions/doc-status"
   status = 200
 
 [[redirects]]
   from = "/api/rag-query"
-  to = "/.netlify/functions/api/rag-query"
+  to = "/.netlify/functions/rag-query"
   status = 200
 
 [functions]

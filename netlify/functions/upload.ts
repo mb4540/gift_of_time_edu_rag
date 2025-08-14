@@ -3,7 +3,7 @@ import { getStore } from '@netlify/blobs';
 import { Client } from 'pg';
 import busboy from 'busboy';
 import { Readable } from 'stream';
-import { createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from '../shared/utils';
+import { createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from './shared/utils';
 
 interface UploadData {
   file?: {

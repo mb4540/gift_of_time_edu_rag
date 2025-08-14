@@ -1,6 +1,6 @@
 import { Handler } from '@netlify/functions';
 import { Client } from 'pg';
-import { createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from '../shared/utils';
+import { createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from './shared/utils';
 
 export const handler: Handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
