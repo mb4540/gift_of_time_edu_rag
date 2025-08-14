@@ -27,7 +27,7 @@ exports.handler = async (event, context) => {
     // Trigger background ingestion function
     // Build absolute URL using Netlify env vars; avoid localhost fallback in production
     const baseUrl = process.env.DEPLOY_URL || process.env.URL || 'http://localhost:8888';
-    const targetUrl = `${baseUrl}/api/background/ingest`;
+    const targetUrl = `${baseUrl}/.netlify/functions/background-ingest`;
     const ingestResponse = await fetch(targetUrl, {
       method: 'POST',
       headers: {
