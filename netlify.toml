@@ -48,5 +48,10 @@
   to = "/.netlify/functions/background/ingest"
   status = 200
 
+[[redirects]]
+  from = "/api/test-ingest"
+  to = "/.netlify/functions/test-ingest"
+  status = 200
+
 [functions]
   "scheduled/nightly-maintenance" = { schedule = "0 2 * * *" }
