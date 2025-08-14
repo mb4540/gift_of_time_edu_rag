@@ -7,20 +7,21 @@
     "build": "echo build-skip"
   },
   "devDependencies": {
+    "@types/busboy": "^1.5.0",
     "@types/node": "^20.0.0",
     "@types/pg": "^8.10.0",
-    "@types/busboy": "^1.5.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@netlify/functions": "^2.0.0",
     "@netlify/blobs": "^8.0.0",
-    "pg": "^8.11.0",
+    "@netlify/functions": "^2.0.0",
     "busboy": "^1.6.0",
-    "mammoth": "^1.6.0",
-    "pdf-parse": "^1.1.1",
-    "epub2": "^3.0.2",
     "crypto": "^1.0.1",
-    "openai": "^4.20.0"
+    "epub2": "^3.0.2",
+    "mammoth": "^1.6.0",
+    "openai": "^4.20.0",
+    "pdf-parse": "^1.1.1",
+    "pg": "^8.11.0",
+    "zod": "^3.25.76"
   }
 }

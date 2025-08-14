@@ -2,12 +2,17 @@ import { Handler, HandlerEvent, HandlerContext, HandlerResponse } from '@netlify
 import { Client } from 'pg';
 import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
+import { validateRequestBody, createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from '../shared/utils';
 
-interface QueryInput {
-  prompt: string;
-  doc_id?: string;
-  top_k?: number;
-}
+// Zod schema for input validation
+const QueryInputSchema = z.object({
+  prompt: z.string().min(1, 'Prompt cannot be empty').max(2000, 'Prompt too long'),
+  doc_id: z.string().optional(),
+  top_k: z.number().int().min(1).max(20).optional().default(5)
+});
+
+type QueryInput = z.infer<typeof QueryInputSchema>;
 
 interface QueryResponse {
   request_id: string;
@@ -119,32 +124,24 @@ function packContextWithCitations(chunks: ChunkResult[]): string {
 
 export const handler = async (event: HandlerEvent, context: HandlerContext): Promise<HandlerResponse> => {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-      },
-      body: JSON.stringify({ error: 'Method not allowed' })
-    };
+    return createErrorResponse(405, 'Method not allowed', ErrorCodes.METHOD_NOT_ALLOWED);
   }
 
   try {
-    const input: QueryInput = JSON.parse(event.body || '{}');
-    const { prompt, doc_id, top_k = 5 } = input;
-    
-    if (!prompt?.trim()) {
-      return {
-        statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ error: 'Missing prompt' })
-      };
+    // Rate limiting
+    const clientIP = getClientIP(event);
+    const rateLimitResult = checkRateLimit(clientIP);
+    if (!rateLimitResult.allowed) {
+      return createErrorResponse(429, rateLimitResult.error.error, rateLimitResult.error.code, rateLimitResult.error.details);
     }
+
+    // Input validation
+    const validationResult = validateRequestBody(event.body, QueryInputSchema);
+    if (!validationResult.success) {
+      return createErrorResponse(400, validationResult.error.error, validationResult.error.code, validationResult.error.details);
+    }
+
+    const { prompt, doc_id, top_k } = validationResult.data;
 
     // Generate request ID and start timing
     const requestId = randomUUID();
@@ -262,17 +259,24 @@ export const handler = async (event: HandlerEvent, context: HandlerContext): Pro
 
   } catch (error) {
     console.error('RAG query error:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({
-        error: 'RAG query failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
+    
+    // Determine error type and code
+    let errorCode: string = ErrorCodes.INTERNAL_ERROR;
+    let errorMessage = 'RAG query failed';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('database') || error.message.includes('connection')) {
+        errorCode = ErrorCodes.DATABASE_ERROR;
+        errorMessage = 'Database connection failed';
+      } else if (error.message.includes('OpenAI') || error.message.includes('API')) {
+        errorCode = ErrorCodes.EXTERNAL_API_ERROR;
+        errorMessage = 'External API error';
+      }
+    }
+    
+    return createErrorResponse(500, errorMessage, errorCode, {
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
 

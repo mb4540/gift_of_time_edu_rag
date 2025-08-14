@@ -23,6 +23,13 @@
         button:hover {
             background-color: #005a87;
         }
+        button.retry {
+            background-color: #dc3545;
+            margin-left: 10px;
+        }
+        button.retry:hover {
+            background-color: #c82333;
+        }
         #response {
             margin-top: 20px;
             padding: 15px;
@@ -31,9 +38,53 @@
             white-space: pre-wrap;
             font-family: monospace;
         }
+        .error-banner {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-bottom: 1px solid #f5c6cb;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .error-banner.show {
+            display: block;
+        }
+        .error-banner .close-btn {
+            float: right;
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #721c24;
+            padding: 0;
+            margin-left: 10px;
+        }
+        .error-details {
+            font-size: 0.9em;
+            margin-top: 5px;
+            opacity: 0.8;
+        }
+        body.error-banner-shown {
+            margin-top: 100px;
+        }
     </style>
 </head>
 <body>
+    <!-- Error Banner -->
+    <div id="error-banner" class="error-banner">
+        <button class="close-btn" onclick="hideErrorBanner()">&times;</button>
+        <div id="error-message"></div>
+        <div id="error-details" class="error-details"></div>
+        <div style="margin-top: 10px;">
+            <button id="retry-button" class="retry" onclick="retryLastAction()" style="display: none;">Retry</button>
+        </div>
+    </div>
+    
     <h1>Gift of Time EDU RAG</h1>
     
     <section>
@@ -150,16 +201,106 @@
     </section>
 
     <script>
+        // Global error handling and retry functionality
+        let lastFailedAction = null;
+        
+        function showErrorBanner(error, code, details, retryAction = null) {
+            const banner = document.getElementById('error-banner');
+            const message = document.getElementById('error-message');
+            const detailsDiv = document.getElementById('error-details');
+            const retryButton = document.getElementById('retry-button');
+            
+            message.textContent = error || 'An error occurred';
+            
+            if (details) {
+                if (typeof details === 'object') {
+                    detailsDiv.textContent = `Code: ${code} | Details: ${JSON.stringify(details)}`;
+                } else {
+                    detailsDiv.textContent = `Code: ${code} | ${details}`;
+                }
+            } else {
+                detailsDiv.textContent = `Error Code: ${code}`;
+            }
+            
+            if (retryAction) {
+                lastFailedAction = retryAction;
+                retryButton.style.display = 'inline-block';
+            } else {
+                retryButton.style.display = 'none';
+            }
+            
+            banner.classList.add('show');
+            document.body.classList.add('error-banner-shown');
+            
+            // Auto-hide after 10 seconds for non-critical errors
+            if (code !== 'DATABASE_ERROR' && code !== 'EXTERNAL_API_ERROR') {
+                setTimeout(() => {
+                    hideErrorBanner();
+                }, 10000);
+            }
+        }
+        
+        function hideErrorBanner() {
+            const banner = document.getElementById('error-banner');
+            banner.classList.remove('show');
+            document.body.classList.remove('error-banner-shown');
+        }
+        
+        function retryLastAction() {
+            if (lastFailedAction) {
+                hideErrorBanner();
+                lastFailedAction();
+            }
+        }
+        
+        // Enhanced error handling for fetch requests
+        async function handleApiResponse(response, retryAction = null) {
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ 
+                    error: 'Network error', 
+                    code: 'NETWORK_ERROR' 
+                }));
+                
+                showErrorBanner(
+                    errorData.error || 'Request failed', 
+                    errorData.code || 'UNKNOWN_ERROR', 
+                    errorData.details,
+                    retryAction
+                );
+                
+                return null;
+            }
+            
+            const data = await response.json();
+            
+            // Check for API-level errors in successful responses
+            if (data.error) {
+                showErrorBanner(
+                    data.error, 
+                    data.code || 'API_ERROR', 
+                    data.details,
+                    retryAction
+                );
+                return null;
+            }
+            
+            return data;
+        }
+        
         async function checkHealth() {
-            const responseDiv = document.getElementById('health-response');
-            responseDiv.textContent = 'Loading...';
+            const healthResponse = document.getElementById('health-response');
+            healthResponse.innerHTML = 'Checking...';
             
             try {
                 const response = await fetch('/api/health');
-                const data = await response.json();
-                responseDiv.textContent = JSON.stringify(data, null, 2);
+                const data = await handleApiResponse(response, checkHealth);
+                
+                if (data) {
+                    healthResponse.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
             } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
+                healthResponse.innerHTML = `<span style="color: red;">Network Error: ${error.message}</span>`;
+                showErrorBanner('Network connection failed', 'NETWORK_ERROR', error.message, checkHealth);
             }
         }
 
@@ -222,8 +363,8 @@
         }
 
         async function runMigration() {
-            const responseDiv = document.getElementById('migration-response');
-            responseDiv.textContent = 'Running migration...';
+            const migrationResponse = document.getElementById('migration-response');
+            migrationResponse.innerHTML = 'Running migration...';
             
             try {
                 const response = await fetch('/api/db-migrate', {
@@ -232,59 +373,48 @@
                         'Content-Type': 'application/json'
                     }
                 });
+                const data = await handleApiResponse(response, runMigration);
                 
-                const data = await response.json();
-                if (response.ok) {
-                    responseDiv.textContent = `✅ Migration Success: ${JSON.stringify(data, null, 2)}`;
-                } else {
-                    responseDiv.textContent = `❌ Migration Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
+                if (data) {
+                    migrationResponse.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
                 }
             } catch (error) {
-                responseDiv.textContent = `❌ Error: ${error.message}`;
+                migrationResponse.innerHTML = `<span style="color: red;">Network Error: ${error.message}</span>`;
+                showErrorBanner('Database migration failed', 'NETWORK_ERROR', error.message, runMigration);
             }
         }
 
         async function uploadFile() {
+            const uploadResponse = document.getElementById('upload-response');
             const fileInput = document.getElementById('file-input');
             const titleInput = document.getElementById('title-input');
             const typeInput = document.getElementById('type-input');
             const tenantInput = document.getElementById('tenant-input');
-            const responseDiv = document.getElementById('upload-response');
             
-            // Validate inputs
-            if (!fileInput.files || !fileInput.files[0]) {
-                responseDiv.textContent = 'Error: Please select a file';
+            if (!fileInput.files[0] || !titleInput.value || !typeInput.value || !tenantInput.value) {
+                uploadResponse.innerHTML = '<span style="color: red;">Please fill in all fields and select a file</span>';
+                showErrorBanner('Missing required fields', 'VALIDATION_ERROR', 'Please fill in all fields and select a file');
                 return;
             }
             
-            if (!titleInput.value.trim() || !typeInput.value || !tenantInput.value.trim()) {
-                responseDiv.textContent = 'Error: Please fill in all fields';
-                return;
-            }
-            
-            responseDiv.textContent = 'Uploading...';
+            uploadResponse.innerHTML = 'Uploading...';
             
             try {
                 const formData = new FormData();
                 formData.append('file', fileInput.files[0]);
-                formData.append('title', titleInput.value.trim());
+                formData.append('title', titleInput.value);
                 formData.append('type', typeInput.value);
-                formData.append('tenant_id', tenantInput.value.trim());
+                formData.append('tenant_id', tenantInput.value);
                 
                 const response = await fetch('/api/upload', {
                     method: 'POST',
                     body: formData
                 });
                 
-                const data = await response.json();
-                if (response.ok) {
-                    responseDiv.textContent = `✅ Upload Success: ${JSON.stringify(data, null, 2)}`;
-                    // Auto-populate processing fields
-                    document.getElementById('doc-id-input').value = data.doc_id;
-                    document.getElementById('tenant-id-input').value = tenantInput.value.trim();
-                    // Clear form
-                    document.getElementById('upload-form').reset();
-                } else {
+                const data = await handleApiResponse(response, uploadFile);
+                
+                if (data) {
+                    uploadResponse.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
                     responseDiv.textContent = `❌ Upload Failed: ${data.error}${data.details ? ' - ' + data.details : ''}`;
                 }
             } catch (error) {

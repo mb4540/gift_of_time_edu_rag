@@ -1,18 +1,17 @@
 import { Handler } from '@netlify/functions';
 import { Client } from 'pg';
+import { createErrorResponse, ErrorCodes, checkRateLimit, getClientIP } from '../shared/utils';
 
 export const handler: Handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-      },
-      body: JSON.stringify({ error: 'Method not allowed' })
-    };
+    return createErrorResponse(405, 'Method not allowed', ErrorCodes.METHOD_NOT_ALLOWED);
+  }
+
+  // Rate limiting
+  const clientIP = getClientIP(event);
+  const rateLimitResult = checkRateLimit(clientIP);
+  if (!rateLimitResult.allowed) {
+    return createErrorResponse(429, rateLimitResult.error.error, rateLimitResult.error.code, rateLimitResult.error.details);
   }
 
   const client = new Client({
@@ -140,19 +139,21 @@ export const handler: Handler = async (event, context) => {
 
   } catch (error) {
     console.error('Migration error:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-      },
-      body: JSON.stringify({ 
-        error: 'Migration failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
+    
+    let errorCode: string = ErrorCodes.DATABASE_ERROR;
+    let errorMessage = 'Database migration failed';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('connection')) {
+        errorMessage = 'Database connection failed';
+      } else if (error.message.includes('permission')) {
+        errorMessage = 'Database permission denied';
+      }
+    }
+    
+    return createErrorResponse(500, errorMessage, errorCode, {
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
   } finally {
     await client.end();
   }
